@@ -1,4 +1,4 @@
-# task1-2-report
+# IMU Task 1 & Task 2 Report
 
 
 ## Task 1
