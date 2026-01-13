@@ -81,17 +81,17 @@ Also, the current analysis processes the full signal without train/test separati
 ## Task 2
 
 ### Process of Collecting Smoothed IMU Data
-To build a regression model under a **slow-moving** condition, IMU data was recorded while performing slow and smooth motions.  
-The log file (`imu_smooth.csv`) contains:
+IMU data was collected during a **slow-moving action** using `IMU_SD_ST_AGEQ.ino`.
+
+The saved file `imu_smooth.csv` contains the following fields:
 
 - **Inputs (features):** `ax`, `ay`, `az`, `gx`, `gy`, `gz`
-- **References (ground-truth):** `roll`, `pitch`, `yaw` (from Device Fusion)
-- **Time:** `timestamp`
+- **Reference / ground truth:** `roll` (roll computed by Device Fusion)
+- **Timestamp (time information):** `timestamp`
 
-In Task 2 modeling, the data was used as follows:
-- **Roll/Pitch regression inputs:** mainly `ax`, `ay`, `az` (3-axis acceleration)
-- **Target (label):** `roll` or `pitch` (Fusion output)
-- Some models (e.g., **SVR**, **FFNN/MLP**) are sensitive to feature scaling, so **StandardScaler** normalization was applied.
+For the roll prediction models, `ax`, `ay`, and `az` were mainly used as input features, and `roll` was used as the target label.  
+Since models such as **SVM (SVR)** and **MLP** are sensitive to input scaling, **StandardScaler** normalization was applied.
+
 
 
 ---
@@ -114,12 +114,11 @@ Interpretation:
 ### Regression Algorithms and Estimation Methods
 
 #### 1) Physics-based Analytic (Trigonometry) — Baseline
-For slow motions, acceleration mostly reflects the gravity vector, so roll/pitch can be computed using trigonometric relations.
+For slow motions, acceleration mostly reflects the gravity vector, so roll can be computed using trigonometric relations.
 
 - **Roll**
   - `roll = atan2(ay, az)`
-- **Pitch**
-  - `pitch = atan2(-ax, sqrt(ay^2 + az^2))`
+
 
 **Pros:** no training, minimal computation, physically interpretable  
 **Cons:** error can increase during fast motions (large linear acceleration)
@@ -173,18 +172,7 @@ Although not regression models, these are representative IMU angle estimation ap
 
 ### Performance Comparison of Different Methods
 
-#### 1) Pitch Results
-| Method | R² (Pitch) |
-|---|---:|
-| Analytic (Trigonometry) | 0.9956 |
-| Linear Regression | 0.9956 |
-| Polynomial Regression (deg 3) | 0.9962 |
-
-Interpretation:
-- Under slow-motion conditions, **analytic** and **linear regression** achieved similarly high performance.
-- Polynomial regression shows a **small improvement** (0.9956 → 0.9962), but the gain is minor.
-
-#### 2) Roll Results (Physics / Filtering Perspective)
+#### 1) Roll Results (Physics / Filtering Perspective)
 | Method | R² (Roll) |
 |---|---:|
 | Accel-only (Trigonometry) | 0.9998 |
@@ -195,7 +183,7 @@ Interpretation:
 - **Gyro-only** performance drops significantly due to drift (R² = 0.7501).
 - **Complementary filtering** corrects drift and maintains top performance comparable to accel-only.
 
-#### 3) Roll Results (ML Regression Models)
+#### 2) Roll Results (ML Regression Models)
 | Model | R² (Roll) |
 |---|---:|
 | Analytic (Trigonometry) | 0.9998 |
@@ -220,7 +208,6 @@ Interpretation:
 #### Conclusion under this experiment setting (slow-moving)
 - **Overall best baseline (most efficient): Analytic formula (Trigonometry)**
   - Roll: **R² = 0.9998** (best)
-  - Pitch: **R² = 0.9956** (top-level)
   - No training required, minimal computation, physically interpretable
 
 - **Best sensor-fusion approach: Complementary filter**
@@ -228,5 +215,4 @@ Interpretation:
 
 - **Best learned model (ML perspective)**
   - Roll: **Polynomial (deg 3)** / **FFNN** tie with analytic (**R² = 0.9998**)
-  - Pitch: **Polynomial (deg 3)** is best (**R² = 0.9962**)
   - However, the improvement is small and comes with additional training/tuning cost
