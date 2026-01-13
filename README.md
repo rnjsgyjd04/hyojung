@@ -302,3 +302,158 @@ Best learned model(ML 관점):
 Roll: Polynomial(deg3) / FFNN가 analytic과 동률(0.9998)
 Pitch: Polynomial(deg3)가 최고(0.9962)
 단, 향상 폭이 작고 학습/튜닝 비용이 추가됨
+
+
+
+## Task 2
+
+### Process of Collecting Smoothed IMU Data
+To build a regression model under a **slow-moving** condition, IMU data was recorded while performing slow and smooth motions.  
+The log file (`imu_smooth.csv`) contains:
+
+- **Inputs (features):** `ax`, `ay`, `az`, `gx`, `gy`, `gz`
+- **References (ground-truth):** `roll`, `pitch`, `yaw` (from Device Fusion)
+- **Time:** `timestamp`
+
+In Task 2 modeling, the data was used as follows:
+- **Roll/Pitch regression inputs:** mainly `ax`, `ay`, `az` (3-axis acceleration)
+- **Target (label):** `roll` or `pitch` (Fusion output)
+- Some models (e.g., **SVR**, **FFNN/MLP**) are sensitive to feature scaling, so **StandardScaler** normalization was applied.
+
+
+---
+
+### What Is the R² Metric?
+**R² (coefficient of determination)** measures how well a regression model explains the variance of the ground-truth data.
+
+- **y:** ground-truth (Device Fusion roll/pitch)
+- **ŷ:** model prediction
+- **ȳ:** mean of ground-truth
+
+Interpretation:
+- **R² = 1:** perfect prediction
+- **R² = 0:** no better than predicting the mean
+- **R² < 0:** worse than predicting the mean
+
+
+---
+
+### Regression Algorithms and Estimation Methods
+
+#### 1) Physics-based Analytic (Trigonometry) — Baseline
+For slow motions, acceleration mostly reflects the gravity vector, so roll/pitch can be computed using trigonometric relations.
+
+- **Roll**
+  - `roll = atan2(ay, az)`
+- **Pitch**
+  - `pitch = atan2(-ax, sqrt(ay^2 + az^2))`
+
+**Pros:** no training, minimal computation, physically interpretable  
+**Cons:** error can increase during fast motions (large linear acceleration)
+
+#### 2) Linear Regression
+Models the relationship between inputs (`ax, ay, az`) and outputs (roll/pitch) as a linear combination.
+
+**Pros:** fast, interpretable (coefficients)  
+**Cons:** cannot fully represent nonlinear relations such as `atan2`
+
+#### 3) Polynomial Regression (Non-linear, degree = 3)
+Expands inputs into polynomial terms to capture nonlinearity.
+
+**Pros:** more flexible approximation of nonlinear relations  
+**Cons:** higher risk of overfitting and reduced interpretability due to feature expansion
+
+#### 4) Decision Tree Regression
+Predicts by splitting data using threshold-based rules.
+
+**Pros:** captures nonlinearity and interactions; rule-based interpretability  
+**Cons:** outputs often become piecewise-constant (step-like); prone to overfitting
+
+#### 5) Random Forest Regression
+Ensembles multiple decision trees and averages their predictions.
+
+**Pros:** more stable and less overfitting than a single tree  
+**Cons:** reduced interpretability; increased computation
+
+#### 6) SVM Regression (SVR, RBF Kernel)
+Kernel-based nonlinear regression.
+
+**Pros:** strong nonlinear approximation ability  
+**Cons:** scaling is essential; requires tuning (`C`, `gamma`, `epsilon`)
+
+#### 7) FeedForward Neural Network (MLP/FFNN)
+Learns a nonlinear mapping using a multilayer neural network.
+
+**Pros:** very high expressive power  
+**Cons:** requires scaling and hyperparameter tuning; training reproducibility must be managed  
+In this experiment, **StandardScaler** was applied and a **3 → 64 → 32 → 1** architecture was used.
+
+#### 8) Accel-only vs Gyro-only vs Complementary Filter (Estimation Comparison)
+Although not regression models, these are representative IMU angle estimation approaches:
+
+- **Accel-only:** no drift, but can be corrupted during fast motion
+- **Gyro-only:** smooth output, but drift accumulates over time due to integration
+- **Complementary filter:** combines gyro smoothness with accel-based drift correction
+
+
+---
+
+### Performance Comparison of Different Methods
+
+#### 1) Pitch Results
+| Method | R² (Pitch) |
+|---|---:|
+| Analytic (Trigonometry) | 0.9956 |
+| Linear Regression | 0.9956 |
+| Polynomial Regression (deg 3) | 0.9962 |
+
+Interpretation:
+- Under slow-motion conditions, **analytic** and **linear regression** achieved similarly high performance.
+- Polynomial regression shows a **small improvement** (0.9956 → 0.9962), but the gain is minor.
+
+#### 2) Roll Results (Physics / Filtering Perspective)
+| Method | R² (Roll) |
+|---|---:|
+| Accel-only (Trigonometry) | 0.9998 |
+| Gyro-only (Integration) | 0.7501 |
+| Complementary Filter (α = 0.96) | 0.9998 |
+
+Interpretation:
+- **Gyro-only** performance drops significantly due to drift (R² = 0.7501).
+- **Complementary filtering** corrects drift and maintains top performance comparable to accel-only.
+
+#### 3) Roll Results (ML Regression Models)
+| Model | R² (Roll) |
+|---|---:|
+| Analytic (Trigonometry) | 0.9998 |
+| Linear Regression | 0.9975 |
+| Polynomial Regression (deg 3) | 0.9998 |
+| Decision Tree (max_depth = 3) | 0.9888 |
+| Random Forest (n = 100, depth = 5) | 0.9995 |
+| SVR (RBF, scaled) | 0.9997 |
+| FFNN/MLP (scaled, 64-32) | 0.9998 |
+
+Interpretation:
+- In slow-motion conditions, the **analytic baseline** already achieves near-ceiling performance (0.9998), and most models approach it.
+- **Linear regression** is lower because it approximates the nonlinear `atan2` relationship linearly.
+- **Decision tree** is lower due to step-like approximation and limited depth.
+- **RF / SVR / FFNN / Polynomial** perform very well, but do not clearly outperform the analytic baseline.
+
+
+---
+
+### Which Algorithm Is the Best?
+
+#### Conclusion under this experiment setting (slow-moving)
+- **Overall best baseline (most efficient): Analytic formula (Trigonometry)**
+  - Roll: **R² = 0.9998** (best)
+  - Pitch: **R² = 0.9956** (top-level)
+  - No training required, minimal computation, physically interpretable
+
+- **Best sensor-fusion approach: Complementary filter**
+  - Solves gyro drift while maintaining 최고 성능 on roll (**R² = 0.9998**)
+
+- **Best learned model (ML perspective)**
+  - Roll: **Polynomial (deg 3)** / **FFNN** tie with analytic (**R² = 0.9998**)
+  - Pitch: **Polynomial (deg 3)** is best (**R² = 0.9962**)
+  - However, the improvement is small and comes with additional training/tuning cost
